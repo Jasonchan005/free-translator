@@ -174,26 +174,43 @@
 
       let result = null, engine = '', detected = '';
 
-      // Try MyMemory
-      try {
-        const src = s === 'auto' ? '' : toMM(s);
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${src}|${toMM(t)}&de=translate@freetranslator.com`;
-        const d = await (await fetch(url)).json();
-        if (d.responseStatus === 200 && d.responseData?.translatedText) {
-          result = d.responseData.translatedText; engine = 'MyMemory';
-          if (s === 'auto' && d.responseData.detectedLanguage) detected = d.responseData.detectedLanguage;
-        }
-      } catch(e) {}
-
-      // Fallback
-      if (!result) {
+      if (s === 'auto') {
+        // Auto-detect: try LibreTranslate first (it supports auto)
         try {
           const d = await (await fetch('https://libretranslate.com/translate', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ q: text, source: s === 'auto' ? 'auto' : s, target: t, format: 'text' })
+            body: JSON.stringify({ q: text, source: 'auto', target: t, format: 'text' })
           })).json();
-          if (d.translatedText) { result = d.translatedText; engine = 'LibreTranslate'; if (s === 'auto' && d.detectedLanguage) detected = d.detectedLanguage; }
+          if (d.translatedText) { result = d.translatedText; engine = 'LibreTranslate'; if (d.detectedLanguage) detected = d.detectedLanguage; }
         } catch(e) {}
+        // Fallback: MyMemory with English as default source guess
+        if (!result) {
+          try {
+            const d = await (await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${toMM(t)}&de=translate@freetranslator.com`)).json();
+            if (d.responseStatus === 200 && d.responseData?.translatedText) {
+              result = d.responseData.translatedText; engine = 'MyMemory';
+              if (d.responseData.detectedLanguage) detected = d.responseData.detectedLanguage;
+            }
+          } catch(e) {}
+        }
+      } else {
+        // Specific source: try MyMemory first
+        try {
+          const d = await (await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${toMM(s)}|${toMM(t)}&de=translate@freetranslator.com`)).json();
+          if (d.responseStatus === 200 && d.responseData?.translatedText) {
+            result = d.responseData.translatedText; engine = 'MyMemory';
+          }
+        } catch(e) {}
+        // Fallback: LibreTranslate
+        if (!result) {
+          try {
+            const d = await (await fetch('https://libretranslate.com/translate', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ q: text, source: s, target: t, format: 'text' })
+            })).json();
+            if (d.translatedText) { result = d.translatedText; engine = 'LibreTranslate'; }
+          } catch(e) {}
+        }
       }
 
       btn.disabled = false; btn.innerHTML = 'Translate';
