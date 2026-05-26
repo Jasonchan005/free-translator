@@ -42,7 +42,7 @@
   <section class="hero-gradient text-white py-12 sm:py-16">
     <div class="max-w-4xl mx-auto px-4 text-center">
       <h1 class="text-3xl sm:text-5xl font-extrabold mb-4">Free Online Translator</h1>
-      <p class="text-lg text-gray-300 max-w-2xl mx-auto">Translate text between 20+ languages instantly. Powered by free translation engines. No account needed.</p>
+      <p class="text-lg text-gray-300 max-w-2xl mx-auto">Translate text between 20+ languages. Select source and target language, then translate. No account needed.</p>
     </div>
   </section>
 
@@ -77,7 +77,6 @@
 
       <div id="engineInfo" class="hidden mt-3 text-center text-xs text-gray-400">
         <span id="engineBadge" class="px-2 py-1 bg-gray-100 rounded"></span>
-        <span id="detectedLang" class="ml-2"></span>
       </div>
 
       <div class="mt-6 p-3 bg-amber-50 rounded-xl text-xs text-amber-700 text-center">
@@ -136,9 +135,14 @@
     function init() {
       const src = document.getElementById('sourceLang');
       const tgt = document.getElementById('targetLang');
-      src.innerHTML = '<option value="auto">🌐 Auto Detect</option>';
-      LANGUAGES.forEach(l => { src.innerHTML += `<option value="${l.code}">${l.name}</option>`; });
-      LANGUAGES.forEach((l, i) => { tgt.innerHTML += `<option value="${l.code}"${i===0?' selected':''}>${l.name}</option>`; });
+      // Source: default English
+      LANGUAGES.forEach(l => {
+        src.innerHTML += `<option value="${l.code}" ${l.code==='en'?' selected':''}>${l.name}</option>`;
+      });
+      // Target: default Chinese
+      LANGUAGES.forEach(l => {
+        tgt.innerHTML += `<option value="${l.code}" ${l.code==='zh-CN'?' selected':''}>${l.name}</option>`;
+      });
       document.getElementById('sourceText').addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') translateText(); });
     }
 
@@ -146,7 +150,6 @@
 
     function swapLanguages() {
       const s = document.getElementById('sourceLang'), t = document.getElementById('targetLang');
-      if (s.value === 'auto') return;
       [s.value, t.value] = [t.value, s.value];
       const box = document.getElementById('resultBox');
       document.getElementById('sourceText').value = box.textContent === 'Translation will appear here...' ? '' : box.textContent;
@@ -172,45 +175,25 @@
       document.getElementById('engineInfo').style.display = 'none';
       document.getElementById('statusMsg').classList.add('hidden');
 
-      let result = null, engine = '', detected = '';
+      let result = null, engine = '';
 
-      if (s === 'auto') {
-        // Auto-detect: try LibreTranslate first (it supports auto)
+      // Try MyMemory first
+      try {
+        const d = await (await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${toMM(s)}|${toMM(t)}&de=translate@freetranslator.com`)).json();
+        if (d.responseStatus === 200 && d.responseData?.translatedText) {
+          result = d.responseData.translatedText; engine = 'MyMemory';
+        }
+      } catch(e) {}
+
+      // Fallback
+      if (!result) {
         try {
           const d = await (await fetch('https://libretranslate.com/translate', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ q: text, source: 'auto', target: t, format: 'text' })
+            body: JSON.stringify({ q: text, source: s, target: t, format: 'text' })
           })).json();
-          if (d.translatedText) { result = d.translatedText; engine = 'LibreTranslate'; if (d.detectedLanguage) detected = d.detectedLanguage; }
+          if (d.translatedText) { result = d.translatedText; engine = 'LibreTranslate'; }
         } catch(e) {}
-        // Fallback: MyMemory with English as default source guess
-        if (!result) {
-          try {
-            const d = await (await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${toMM(t)}&de=translate@freetranslator.com`)).json();
-            if (d.responseStatus === 200 && d.responseData?.translatedText) {
-              result = d.responseData.translatedText; engine = 'MyMemory';
-              if (d.responseData.detectedLanguage) detected = d.responseData.detectedLanguage;
-            }
-          } catch(e) {}
-        }
-      } else {
-        // Specific source: try MyMemory first
-        try {
-          const d = await (await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${toMM(s)}|${toMM(t)}&de=translate@freetranslator.com`)).json();
-          if (d.responseStatus === 200 && d.responseData?.translatedText) {
-            result = d.responseData.translatedText; engine = 'MyMemory';
-          }
-        } catch(e) {}
-        // Fallback: LibreTranslate
-        if (!result) {
-          try {
-            const d = await (await fetch('https://libretranslate.com/translate', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ q: text, source: s, target: t, format: 'text' })
-            })).json();
-            if (d.translatedText) { result = d.translatedText; engine = 'LibreTranslate'; }
-          } catch(e) {}
-        }
       }
 
       btn.disabled = false; btn.innerHTML = 'Translate';
@@ -219,7 +202,6 @@
         document.getElementById('resultBox').textContent = result;
         document.getElementById('copyBtn').style.display = 'block';
         document.getElementById('engineBadge').textContent = `Powered by ${engine}`;
-        document.getElementById('detectedLang').textContent = detected ? `Detected: ${detected}` : '';
         document.getElementById('engineInfo').style.display = 'block';
       } else {
         document.getElementById('resultBox').textContent = 'Translation service unavailable. Daily limit may have been reached. Try again later.';
